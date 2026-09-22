@@ -1,0 +1,89 @@
+# Maven
+**/target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+.flattened-pom.xml
+.m2/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+*.iml
+*.iws
+*.ipr
+.settings/
+.classpath
+.project
+.c9/
+*.launch
+.tern-port
+.env.local
+.env.*.local
+
+# Build
+build/
+dist/
+*.class
+*.jar
+*.war
+*.ear
+*.zip
+*.tar.gz
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage
+coverage/
+.nyc_output/
+junit.xml
+
+# Docker
+docker-compose.override.yml
+.docker/
+
+# Gradle
+.gradle/
+gradlew
+gradlew.bat
+
+# Node
+node_modules/
+package-lock.json
+yarn.lock
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+Thumbs.db
+.DS_Store
+ehthumbs.db
+
+# Miscellaneous
+.linter-cache/
