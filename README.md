@@ -1,6 +1,8 @@
 # Wayline Payment Orchestration & Reconciliation Platform
 
-A production-style payment orchestration and reconciliation platform built with Java 21, Spring Boot 3, and a modular monolith architecture. This project demonstrates strong backend engineering practices for handling complex financial transactions with correctness, resilience, and observability as first-class concerns.
+Wayline is a payment orchestration platform built with Java 21 and Spring Boot 3.
+It handles the complete payment flow from provider selection and payment execution to webhooks, settlement, and reconciliation. The system is designed around real payment failure scenarios such as duplicate requests, provider timeouts, retries, ambiguous payment outcomes, duplicate or out-of-order webhooks, and reconciliation mismatches.
+The platform uses a modular monolith architecture with dedicated modules for payments, provider routing, provider integrations, ledger, settlement, and reconciliation. PostgreSQL acts as the source of truth, while Kafka, Redis, Resilience4j, and the transactional outbox pattern are used for asynchronous processing, reliability, and coordination.
 
 ## Project Vision
 
