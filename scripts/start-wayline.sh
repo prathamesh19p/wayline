@@ -6,25 +6,25 @@ cd "$ROOT_DIR"
 
 if [[ -z "${JAVA_HOME:-}" || ! -x "${JAVA_HOME}/bin/java" ]]; then
   if [[ "$(uname -s)" == "Darwin" ]] && command -v /usr/libexec/java_home >/dev/null 2>&1; then
-    JAVA_HOME="$(/usr/libexec/java_home -v 21 2>/dev/null || true)"
+    JAVA_HOME="$(/usr/libexec/java_home -v 25 2>/dev/null || true)"
   fi
 fi
 
 if [[ -z "${JAVA_HOME:-}" || ! -x "${JAVA_HOME}/bin/java" ]]; then
-  echo "Java 21 is required. Set JAVA_HOME to a JDK 21 installation." >&2
+  echo "Java 25 is required. Set JAVA_HOME to a JDK 25 installation." >&2
   exit 1
 fi
 
 if ! command -v mvn >/dev/null 2>&1; then
-  echo "Maven is required. Install Maven 3.8+ and run this script again." >&2
+  echo "Maven is required. Install Maven 3.9+ and run this script again." >&2
   exit 1
 fi
 export JAVA_HOME
 export PATH="$JAVA_HOME/bin:$PATH"
 
 java_major="$($JAVA_HOME/bin/java -version 2>&1 | awk -F '"' '/version/ {print $2}' | cut -d. -f1)"
-if [[ "$java_major" != "21" ]]; then
-  echo "Java 21 is required; found Java $java_major." >&2
+if (( java_major < 25 )); then
+  echo "Java 25 or newer is required; found Java $java_major." >&2
   exit 1
 fi
 
@@ -59,7 +59,7 @@ fi
 
 : "${WAYLINE_AUTH_USERNAME:=merchant-demo}"
 : "${WAYLINE_AUTH_PASSWORD:=change-this-password}"
-: "${JWT_SECRET:=wayline-local-jwt-secret-change-for-shared-environments}"
+: "${JWT_SECRET:=wayline-local-development-jwt-signing-secret-do-not-use-in-shared-environments}"
 : "${WAYLINE_WEBHOOK_SECRET:=wayline-local-webhook-secret}"
 export WAYLINE_AUTH_USERNAME WAYLINE_AUTH_PASSWORD JWT_SECRET WAYLINE_WEBHOOK_SECRET
 
