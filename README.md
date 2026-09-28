@@ -400,7 +400,7 @@ Explicit scenarios for:
 Use k6 for performance validation:
 
 ```bash
-k6 run tests/load/payment-creation.js
+k6 run k6-load-test.js
 ```
 
 ## Observability
@@ -479,33 +479,60 @@ Example:
 
 ```
 wayline/
-├── pom.xml                          # Root POM with dependency management
-├── docker-compose.yml               # Infrastructure setup
+├── pom.xml                          # Root Maven reactor and dependency management
+├── README.md                        # Project overview and API examples
+├── QUICKSTART.md                    # Manual local setup and startup
+├── docker-compose.yml               # PostgreSQL, Redis, Kafka, and observability services
 ├── docker/
-│   └── prometheus.yml               # Prometheus configuration
-├── wayline-common/                  # Shared utilities
-├── wayline-payment/                 # Payment lifecycle
-├── wayline-routing/                 # Provider routing
-├── wayline-provider/                # Provider abstractions
-├── wayline-ledger/                  # Double-entry ledger
-├── wayline-settlement/              # Settlement processing
-├── wayline-reconciliation/          # Reconciliation engine
-├── wayline-notification/            # Notifications
-├── wayline-app/                     # Main application
-│   ├── src/main/
-│   │   ├── java/com/wayline/
-│   │   │   └── WaylineApplication.java
-│   │   └── resources/
-│   │       ├── application.yml
-│   │       └── db/migration/
-│   │           └── V1_0_0__Initial_schema.sql
-│   └── pom.xml
-├── tests/
-│   ├── unit/                        # Unit tests
-│   ├── integration/                 # Integration tests
-│   ├── failure/                     # Failure scenario tests
-│   └── load/                        # k6 load tests
-└── README.md                        # This file
+│   ├── prometheus.yml               # Prometheus configuration
+│   └── grafana-dashboard.json       # Grafana dashboard definition
+├── scripts/
+│   └── start-wayline.sh             # Infrastructure, build, and application startup
+├── k6-load-test.js                  # k6 payment load test
+├── docs/
+│   ├── API.md                       # API reference and examples
+│   └── RUNBOOK.md                   # Operations and troubleshooting
+├── wayline-common/                  # Shared outbox, Kafka, security, and exceptions
+│   ├── pom.xml
+│   └── src/main/java/
+├── wayline-payment/                 # Payment lifecycle, refunds, and idempotency
+│   ├── pom.xml
+│   ├── src/main/java/
+│   └── src/test/java/
+├── wayline-routing/                 # Provider selection and health-aware routing
+│   ├── pom.xml
+│   ├── src/main/java/
+│   └── src/test/java/
+├── wayline-provider/                # Provider ports, adapters, and execution
+│   ├── pom.xml
+│   └── src/main/java/
+├── wayline-ledger/                  # Immutable double-entry ledger
+│   ├── pom.xml
+│   ├── src/main/java/
+│   └── src/test/java/
+├── wayline-settlement/              # Provider settlement import
+│   ├── pom.xml
+│   └── src/main/java/
+├── wayline-reconciliation/          # Reconciliation and mismatch handling
+│   ├── pom.xml
+│   └── src/main/java/
+├── wayline-notification/            # Provider webhooks and merchant callbacks
+│   ├── pom.xml
+│   ├── src/main/java/
+│   └── src/test/java/
+└── wayline-app/                     # Spring Boot entry point and app configuration
+  ├── pom.xml
+  ├── src/main/java/com/wayline/
+  │   └── WaylineApplication.java
+  ├── src/main/resources/
+  │   ├── application.yml
+  │   └── db/migration/
+  │       ├── V1_0_0__Initial_schema.sql
+  │       ├── V1_1_0__Refunds.sql
+  │       ├── V1_2_0__Notification_deliveries.sql
+  │       ├── V1_3_0__Refresh_tokens.sql
+  │       └── V1_4_0__Settlement_processed_at.sql
+  └── src/test/java/
 ```
 
 ## Contributing
