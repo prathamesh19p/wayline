@@ -3,6 +3,7 @@ package com.wayline.ledger.domain;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
+import lombok.Builder.Default;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -38,11 +39,14 @@ public class Account {
     private String currency; // INR, USD, EUR, etc
 
     @Column(nullable = false, length = 20)
+    @Default
     private String status = "ACTIVE";
 
     @Column(nullable = false, updatable = false)
+    @Default
     private Instant createdAt = Instant.now();
 
     @Column(nullable = false)
+    @Default
     private Instant updatedAt = Instant.now();
 }

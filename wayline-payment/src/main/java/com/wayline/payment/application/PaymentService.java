@@ -1,5 +1,7 @@
 package com.wayline.payment.application;
 
+import com.wayline.common.outbox.OutboxEvent;
+import com.wayline.common.outbox.OutboxEventRepository;
 import com.wayline.payment.domain.*;
 import com.wayline.payment.infrastructure.*;
 import lombok.RequiredArgsConstructor;
@@ -14,14 +16,6 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * Core payment service managing payment lifecycle.
- * Responsible for:
- * - Payment creation and idempotency
- * - State machine validation
- * - Payment attempt tracking
- * - State history recording
- */
 @Service
 @Slf4j
 @RequiredArgsConstructor
@@ -32,20 +26,13 @@ public class PaymentService {
     private final PaymentStateHistoryRepository stateHistoryRepository;
     private final IdempotencyRecordRepository idempotencyRecordRepository;
     private final PaymentWebhookRepository webhookRepository;
+    private final OutboxEventRepository outboxEventRepository;
+    private final PaymentLedgerPoster ledgerPoster;
 
-    /**
-     * Create a new payment with idempotency support.
-     *
-     * @param merchantId Merchant identifier
-     * @param idempotencyKey Unique request key
-     * @param request Payment request details
-     * @return Created or existing payment
-     */
     @Transactional
     public Payment createPayment(String merchantId, String idempotencyKey, CreatePaymentRequest request) {
         log.info("Creating payment for merchant {} with idempotency key {}", merchantId, idempotencyKey);
 
-        // Check idempotency
         Optional<IdempotencyRecord> existingRecord = idempotencyRecordRepository
             .findByMerchantIdAndIdempotencyKey(merchantId, idempotencyKey);
 
@@ -60,10 +47,8 @@ public class PaymentService {
                 .orElseThrow(() -> new IllegalStateException("Payment not found for idempotency record"));
         }
 
-        // Validate request
         validatePaymentRequest(request);
 
-        // Create payment
         Payment payment = Payment.builder()
             .merchantId(merchantId)
             .idempotencyKey(idempotencyKey)
@@ -77,7 +62,6 @@ public class PaymentService {
         Payment savedPayment = paymentRepository.save(payment);
         log.info("Payment created: id={} status={}", savedPayment.getId(), savedPayment.getStatus());
 
-        // Record idempotency
         IdempotencyRecord idempotencyRecord = IdempotencyRecord.builder()
             .merchantId(merchantId)
             .idempotencyKey(idempotencyKey)
@@ -89,15 +73,11 @@ public class PaymentService {
 
         idempotencyRecordRepository.save(idempotencyRecord);
 
-        // Record initial state
         recordStateTransition(savedPayment.getId(), null, PaymentStatus.CREATED, "Initial creation", "API");
 
         return savedPayment;
     }
 
-    /**
-     * Get payment by ID.
-     */
     public Optional<Payment> getPayment(Long paymentId) {
         return paymentRepository.findById(paymentId);
     }
@@ -107,26 +87,27 @@ public class PaymentService {
             .filter(payment -> payment.getMerchantId().equals(merchantId));
     }
 
-    /**
-     * Transition payment to new status.
-     *
-     * @param paymentId Payment ID
-     * @param newStatus Target status
-     * @param reason Reason for transition
-     * @param source Source of transition
-     * @return Updated payment
-     */
     @Transactional
     public Payment transitionPaymentStatus(Long paymentId, PaymentStatus newStatus, String reason, String source) {
+        return transitionPaymentStatus(paymentId, newStatus, reason, source, null);
+    }
+
+    /**
+     * Persists the state change, its history row, the ledger effect and the outbox event in one
+     * transaction, so an event can never be published for a state that was rolled back, nor a
+     * payment be marked captured without the matching ledger entries.
+     */
+    @Transactional
+    public Payment transitionPaymentStatus(Long paymentId, PaymentStatus newStatus, String reason, String source,
+                                           OutboxEvent outboxEvent) {
         Payment payment = paymentRepository.findById(paymentId)
             .orElseThrow(() -> new IllegalArgumentException("Payment not found: " + paymentId));
 
         PaymentStatus oldStatus = payment.getStatus();
 
         if (!payment.canTransitionTo(newStatus)) {
-            log.error("Invalid state transition from {} to {} for payment {}", oldStatus, newStatus, paymentId);
             throw new IllegalStateException(
-                String.format("Cannot transition from %s to %s", oldStatus, newStatus)
+                String.format("Cannot transition payment %d from %s to %s", paymentId, oldStatus, newStatus)
             );
         }
 
@@ -135,25 +116,50 @@ public class PaymentService {
 
         recordStateTransition(paymentId, oldStatus, newStatus, reason, source);
 
+        if (newStatus == PaymentStatus.SUCCESS) {
+            ledgerPoster.postCapture(payment);
+        }
+
+        if (outboxEvent != null) {
+            outboxEventRepository.save(outboxEvent);
+        }
+
         log.info("Payment transitioned: id={} from {} to {}", paymentId, oldStatus, newStatus);
         return payment;
     }
 
     @Transactional
     public Payment startProcessing(Long paymentId, String provider) {
-        Payment payment = transitionPaymentStatus(
-            paymentId,
-            PaymentStatus.PROCESSING,
-            "Selected provider: " + provider,
-            "ORCHESTRATOR"
-        );
+        Payment payment = paymentRepository.findById(paymentId)
+            .orElseThrow(() -> new IllegalArgumentException("Payment not found: " + paymentId));
+
+        PaymentStatus oldStatus = payment.getStatus();
+        if (!payment.canTransitionTo(PaymentStatus.PROCESSING)) {
+            throw new IllegalStateException(
+                String.format("Cannot transition payment %d from %s to PROCESSING", paymentId, oldStatus)
+            );
+        }
+
+        payment.transitionTo(PaymentStatus.PROCESSING);
+        payment.setSelectedProvider(provider);
+        payment = paymentRepository.save(payment);
+
+        recordStateTransition(paymentId, oldStatus, PaymentStatus.PROCESSING,
+            "Selected provider: " + provider, "ORCHESTRATOR");
+        return payment;
+    }
+
+    @Transactional
+    public Payment selectProviderForProcessingAttempt(Long paymentId, String provider) {
+        Payment payment = paymentRepository.findById(paymentId)
+            .orElseThrow(() -> new IllegalArgumentException("Payment not found: " + paymentId));
+        if (payment.getStatus() != PaymentStatus.PROCESSING) {
+            throw new IllegalStateException("Payment must be PROCESSING before selecting another provider");
+        }
         payment.setSelectedProvider(provider);
         return paymentRepository.save(payment);
     }
 
-    /**
-     * Record a payment attempt.
-     */
     @Transactional
     public PaymentAttempt recordAttempt(Long paymentId, String provider, Integer attemptNumber) {
         PaymentAttempt attempt = PaymentAttempt.builder()
@@ -167,9 +173,6 @@ public class PaymentService {
         return paymentAttemptRepository.save(attempt);
     }
 
-    /**
-     * Update attempt with result.
-     */
     @Transactional
     public PaymentAttempt updateAttempt(Long attemptId, String status, String providerPaymentId, 
                                         String failureCode, String failureMessage) {
@@ -185,23 +188,14 @@ public class PaymentService {
         return paymentAttemptRepository.save(attempt);
     }
 
-    /**
-     * Get all attempts for a payment.
-     */
     public List<PaymentAttempt> getPaymentAttempts(Long paymentId) {
         return paymentAttemptRepository.findByPaymentIdOrderByAttemptNumberAsc(paymentId);
     }
 
-    /**
-     * Get payment state history.
-     */
     public List<PaymentStateHistory> getStateHistory(Long paymentId) {
         return stateHistoryRepository.findByPaymentIdOrderByCreatedAtAsc(paymentId);
     }
 
-    /**
-     * Record webhook event.
-     */
     @Transactional
     public PaymentWebhook recordWebhook(String provider, String providerEventId, Long paymentId,
                                        String eventType, String payload) {
@@ -217,9 +211,6 @@ public class PaymentService {
         return webhookRepository.save(webhook);
     }
 
-    /**
-     * Mark webhook as processed.
-     */
     @Transactional
     public PaymentWebhook markWebhookProcessed(Long webhookId) {
         PaymentWebhook webhook = webhookRepository.findById(webhookId)
@@ -257,7 +248,8 @@ public class PaymentService {
     }
 
     /**
-     * Validate payment request.
+     * Validates against the same fields hashed for idempotency, so a replayed key with a tampered
+     * amount is rejected rather than silently returning the original payment.
      */
     private void validatePaymentRequest(CreatePaymentRequest request) {
         if (request.getAmount() == null || request.getAmount() <= 0) {
@@ -271,9 +263,6 @@ public class PaymentService {
         }
     }
 
-    /**
-     * Record state transition in history.
-     */
     private void recordStateTransition(Long paymentId, PaymentStatus fromState, PaymentStatus toState,
                                       String reason, String source) {
         PaymentStateHistory history = PaymentStateHistory.builder()
@@ -287,9 +276,6 @@ public class PaymentService {
         stateHistoryRepository.save(history);
     }
 
-    /**
-     * Hash request for idempotency validation.
-     */
     private String hashRequest(CreatePaymentRequest request) {
         try {
             String combined = request.getAmount() + "|" + request.getCurrency() + "|" + request.getPaymentMethod();

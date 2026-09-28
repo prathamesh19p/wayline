@@ -46,15 +46,6 @@ public interface PaymentProvider {
     ProviderPaymentResponse refundPayment(String providerPaymentId, Long amount) throws ProviderException;
 
     /**
-     * Verify webhook signature from provider.
-     *
-     * @param payload Webhook payload
-     * @param signature Provider's signature
-     * @return true if signature is valid
-     */
-    boolean verifyWebhookSignature(String payload, String signature);
-
-    /**
      * Get provider health status.
      *
      * @return true if provider is available

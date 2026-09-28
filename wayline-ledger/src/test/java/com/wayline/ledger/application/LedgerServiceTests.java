@@ -1,6 +1,6 @@
 package com.wayline.ledger.application;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.wayline.common.outbox.OutboxEventRepository;
 import com.wayline.ledger.domain.LedgerEntry.EntryType;
 import com.wayline.ledger.infrastructure.AccountRepository;

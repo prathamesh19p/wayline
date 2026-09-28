@@ -3,6 +3,7 @@ package com.wayline.ledger.domain;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
+import lombok.Builder.Default;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -37,5 +38,6 @@ public class LedgerTransaction {
     private String referenceId; // External reference if applicable
 
     @Column(nullable = false, updatable = false)
+    @Default
     private Instant createdAt = Instant.now();
 }

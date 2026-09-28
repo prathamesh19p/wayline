@@ -1,7 +1,7 @@
 package com.wayline.payment.api;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.wayline.payment.domain.PaymentStatus;
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -9,39 +9,37 @@ import lombok.NoArgsConstructor;
 
 import java.time.Instant;
 
-/**
- * Response DTO for payment queries.
- */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@Schema(description = "The current state of a payment.")
 public class PaymentResponse {
 
-    @JsonProperty("id")
+    @Schema(description = "Wayline's identifier for the payment.", example = "1042")
     private Long id;
 
-    @JsonProperty("merchantId")
+    @Schema(description = "Merchant that owns the payment.", example = "test-merchant")
     private String merchantId;
 
-    @JsonProperty("amount")
+    @Schema(description = "Amount in the minor unit of the currency.", example = "12500")
     private Long amount;
 
-    @JsonProperty("currency")
+    @Schema(example = "INR")
     private String currency;
 
-    @JsonProperty("paymentMethod")
+    @Schema(example = "CARD")
     private String paymentMethod;
 
-    @JsonProperty("status")
+    @Schema(description = "UNKNOWN means the provider did not answer in time; the outcome is not "
+        + "yet established and will be resolved by a later webhook.", example = "SUCCESS")
     private PaymentStatus status;
 
-    @JsonProperty("selectedProvider")
+    @Schema(description = "Provider chosen by the routing layer for this payment.",
+        example = "PROVIDER_A")
     private String selectedProvider;
 
-    @JsonProperty("createdAt")
     private Instant createdAt;
 
-    @JsonProperty("updatedAt")
     private Instant updatedAt;
 }

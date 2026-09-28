@@ -14,7 +14,8 @@ import java.time.Instant;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class ProviderHealth {
+public class ProviderHealth implements java.io.Serializable {
+    private static final long serialVersionUID = 1L;
     private String providerName;
     private Boolean healthy;
     private Integer successCount;

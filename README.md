@@ -11,38 +11,60 @@ The Wayline platform solves real backend problems that exist around payment proc
 - **Provider Selection**: Intelligent routing to multiple payment providers with health-aware fallbacks
 - **Unreliable External APIs**: Resilience4j circuit breakers, retries, and timeout handling
 - **Duplicate Requests**: Idempotent payment creation using unique keys
+- **Refunds**: Full and partial refunds that compensate rather than edit, with the refunded total held under a row lock so concurrent requests cannot over-refund
 - **Asynchronous Callbacks**: Webhook processing with state validation and duplicate detection
+- **Merchant Callbacks**: Durable notification outbox with scheduled retries, DEAD inspection, and admin replay
 - **Transaction Consistency**: Strong consistency guarantees for financial operations
 - **Event Delivery**: Transactional outbox pattern with reliable Kafka publishing
 - **Immutable Financial Records**: Double-entry ledger with immutable entries and compensating transactions
 - **Settlement & Reconciliation**: Provider settlement import and multi-source reconciliation
 - **Operational Investigation**: Complete payment timeline with full audit trail
+- **Merchant Ledger Reads**: Owner-scoped balance and immutable entry history endpoints
+- **Security Controls**: Rotating hashed refresh tokens, role authorization, secure headers, CORS, and Redis fixed-window rate limits
 
 ## Technology Stack
 
 | Component | Technology | Purpose |
 |-----------|-----------|---------|
-| **Language & Framework** | Java 21, Spring Boot 3 | Modern JVM platform with latest features |
+| **Language & Framework** | Java 25, Spring Boot 4.1 | Modern JVM platform |
 | **Database** | PostgreSQL | Source of truth for all transactional and financial state |
 | **Message Queue** | Apache Kafka | Asynchronous event processing and reliable delivery |
 | **Caching & Coordination** | Redis | Short-lived idempotency, provider health, distributed locks |
 | **Resilience** | Resilience4j | Circuit breakers, retries, timeouts, bulkheads |
-| **Authentication** | Spring Security + JWT | Stateless API authentication |
+| **Authentication** | Spring Security 7 + JWT | Stateless API authentication |
 | **Database Migration** | Flyway | Versioned schema management |
+| **API Documentation** | springdoc-openapi 3 | OpenAPI 3 document and Swagger UI |
+| **JSON** | Jackson 3 (`tools.jackson`) | Serialisation |
 | **Observability** | Micrometer, Prometheus, Grafana | Metrics collection and visualization |
-| **Distributed Tracing** | OpenTelemetry, Jaeger | End-to-end request tracing |
-| **Testing** | JUnit 5, Mockito, Testcontainers | Comprehensive test coverage |
+| **Distributed Tracing** | OpenTelemetry OTLP, Jaeger | Sampled request spans exported to Jaeger |
+| **Testing** | JUnit 5, Mockito, Testcontainers 2 | Unit and integration coverage |
 | **Load Testing** | k6 | Performance and throughput testing |
+
+## API Documentation
+
+The OpenAPI document is generated from the code, so it cannot drift from the implementation.
+
+| Resource | URL |
+|---|---|
+| Swagger UI | http://localhost:8080/swagger-ui.html |
+| OpenAPI JSON | http://localhost:8080/v3/api-docs |
+
+It documents authentication, the idempotency contract, the minor-unit money convention, and the
+payment state machine including why `UNKNOWN` is not a failure. [docs/API.md](docs/API.md) covers
+the same ground in prose with worked `curl` examples.
 
 ## Start the Application
 
-With Java 21, Maven 3.8+, and Docker Desktop, Colima, or another Docker-compatible runtime installed, run:
+Requires **JDK 25**, Maven 3.9+, and a Docker-compatible runtime.
 
 ```bash
 ./scripts/start-wayline.sh
 ```
 
-This starts the infrastructure, builds the Maven reactor, and launches the API at `http://localhost:8080`. Set `WAYLINE_AUTH_USERNAME`, `WAYLINE_AUTH_PASSWORD`, `JWT_SECRET`, and `WAYLINE_WEBHOOK_SECRET` before running it for non-default credentials. See [QUICKSTART.md](QUICKSTART.md) for manual startup and verification steps.
+This starts the infrastructure, builds the Maven reactor, and launches the API at
+`http://localhost:8080`. `JWT_SECRET` is mandatory and has no default — the application will not
+start without it. Set `WAYLINE_AUTH_USERNAME`, `WAYLINE_AUTH_PASSWORD` and
+`WAYLINE_WEBHOOK_SECRET` too. See [QUICKSTART.md](QUICKSTART.md) for manual startup.
 
 ## Architecture: Modular Monolith
 
@@ -50,15 +72,17 @@ The project uses a modular monolith with clear module boundaries that could late
 
 ### Core Modules
 
-1. **wayline-common**: Shared utilities, domain events, exceptions, security, and observability
-2. **wayline-payment**: Payment lifecycle, idempotency, state machine, and status management
-3. **wayline-routing**: Provider selection algorithm and health-aware routing
-4. **wayline-provider**: Provider abstractions, adapters, and provider simulators
-5. **wayline-ledger**: Immutable double-entry ledger system for financial correctness
-6. **wayline-settlement**: Provider settlement import and processing
-7. **wayline-reconciliation**: Reconciliation engine and mismatch exception handling
-8. **wayline-notification**: Async notification and callback handling
-9. **wayline-app**: Main application bootstrap and infrastructure configuration
+Each module has a README describing its responsibility and the reasoning behind its design.
+
+1. **[wayline-common](wayline-common/README.md)**: Outbox, Kafka de-duplication, security primitives
+2. **[wayline-payment](wayline-payment/README.md)**: Payment lifecycle, idempotency, state machine
+3. **[wayline-routing](wayline-routing/README.md)**: Provider selection and health-aware routing
+4. **[wayline-provider](wayline-provider/README.md)**: Provider port and adapters
+5. **[wayline-ledger](wayline-ledger/README.md)**: Immutable double-entry ledger
+6. **[wayline-settlement](wayline-settlement/README.md)**: Provider settlement import
+7. **[wayline-reconciliation](wayline-reconciliation/README.md)**: Reconciliation and mismatch handling
+8. **[wayline-notification](wayline-notification/README.md)**: Inbound webhooks and merchant callbacks
+9. **[wayline-app](wayline-app/README.md)**: Bootstrap, security, OpenAPI, configuration
 
 ### Infrastructure Components
 
@@ -192,14 +216,8 @@ POST /api/v1/webhooks/{provider}
 ```
 Include the `X-Provider-Signature` header generated with `WAYLINE_WEBHOOK_SECRET`.
 
-### Providers
-```bash
-# Get active providers
-GET /api/v1/providers
-
-# Check provider health
-GET /api/v1/providers/{provider}/health
-```
+Provider selection and health checks are internal to payment creation; there is currently no
+public provider-management endpoint.
 
 ### Settlement
 ```bash
@@ -291,7 +309,7 @@ wayline:
 ## Running the Project
 
 ### Prerequisites
-- Java 21
+- Java 25
 - Maven 3.8+
 - Docker & Docker Compose
 

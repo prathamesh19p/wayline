@@ -5,7 +5,7 @@ import com.wayline.common.outbox.OutboxEventRepository;
 import com.wayline.ledger.domain.*;
 import com.wayline.ledger.infrastructure.*;
 import com.wayline.ledger.domain.LedgerEntry.EntryType;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -135,20 +135,51 @@ public class LedgerService {
         return entryRepository.findByLedgerTransactionIdOrderByCreatedAtAsc(transactionId);
     }
 
+    @Transactional(readOnly = true)
+    public AccountBalance getMerchantBalance(String merchantId, String currency) {
+        Optional<Account> account = accountRepository
+            .findByAccountTypeAndOwnerIdAndCurrency("MERCHANT", merchantId, currency);
+        if (account.isEmpty()) {
+            return new AccountBalance(merchantId, currency, 0L);
+        }
+        long balance = 0L;
+        for (LedgerEntry entry : entryRepository.findByAccountIdOrderByCreatedAtAsc(account.get().getId())) {
+            balance = entry.getEntryType() == EntryType.CREDIT
+                ? Math.addExact(balance, entry.getAmount())
+                : Math.subtractExact(balance, entry.getAmount());
+        }
+        return new AccountBalance(merchantId, currency, balance);
+    }
+
+    @Transactional(readOnly = true)
+    public List<LedgerEntry> getMerchantEntries(String merchantId, String currency) {
+        return accountRepository.findByAccountTypeAndOwnerIdAndCurrency("MERCHANT", merchantId, currency)
+            .map(account -> entryRepository.findByAccountIdOrderByCreatedAtAsc(account.getId()))
+            .orElseGet(List::of);
+    }
+
     /**
      * Validate transaction has equal debits and credits.
      */
     private void validateBalance(List<EntryData> entries) {
+        if (entries == null || entries.size() < 2) {
+            throw new IllegalArgumentException("A ledger transaction requires at least two entries");
+        }
         Map<String, Long> balanceByType = new HashMap<>();
 
         for (EntryData entry : entries) {
+            if (entry == null || entry.currency == null || entry.currency.isBlank()
+                || entry.entryType == null || entry.accountType == null || entry.ownerId == null
+                || entry.amount == null || entry.amount <= 0) {
+                throw new IllegalArgumentException("Ledger entries require account, currency, type, and positive amount");
+            }
             String key = entry.currency;
             long current = balanceByType.getOrDefault(key, 0L);
 
             if (entry.entryType == EntryType.DEBIT) {
-                balanceByType.put(key, current + entry.amount);
+                balanceByType.put(key, Math.addExact(current, entry.amount));
             } else {
-                balanceByType.put(key, current - entry.amount);
+                balanceByType.put(key, Math.subtractExact(current, entry.amount));
             }
         }
 
@@ -204,4 +235,6 @@ public class LedgerService {
             this.currency = currency;
         }
     }
+
+    public record AccountBalance(String merchantId, String currency, long amountMinorUnits) {}
 }

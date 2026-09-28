@@ -36,7 +36,17 @@ public class ProviderSelectorService {
      * @return Selected provider
      */
     public PaymentProvider selectProvider(String paymentMethod, String currency) {
-        log.info("Selecting provider for method={} currency={}", paymentMethod, currency);
+        return getEligibleProviders(paymentMethod, currency, Set.of()).stream()
+            .findFirst()
+            .orElseThrow(() -> new IllegalStateException("No healthy provider available"));
+    }
+
+    public List<PaymentProvider> getEligibleProviders(
+        String paymentMethod,
+        String currency,
+        Set<String> excludedProviderNames
+    ) {
+        log.info("Selecting providers for method={} currency={}", paymentMethod, currency);
 
         // Step 1: Filter supported providers
         List<PaymentProvider> supportedProviders = providers.stream()
@@ -54,6 +64,7 @@ public class ProviderSelectorService {
 
         // Step 2-3: Filter healthy providers
         List<PaymentProvider> healthyProviders = supportedProviders.stream()
+            .filter(provider -> !excludedProviderNames.contains(provider.getProviderName()))
             .filter(p -> {
                 ProviderHealth health = healthService.getProviderHealth(p.getProviderName());
                 boolean isHealthy = health != null && 
@@ -65,19 +76,16 @@ public class ProviderSelectorService {
             .collect(Collectors.toList());
 
         if (healthyProviders.isEmpty()) {
-            log.warn("No healthy providers available, using fallback");
-            // Fallback: use first supported provider
-            return supportedProviders.get(0);
+            return List.of();
         }
 
-        // Step 4-5: Select by priority and success rate
-        return selectByPriority(healthyProviders);
+        return sortByPriority(healthyProviders);
     }
 
     /**
      * Select provider based on priority and success rate.
      */
-    private PaymentProvider selectByPriority(List<PaymentProvider> providers) {
+    private List<PaymentProvider> sortByPriority(List<PaymentProvider> providers) {
         Map<String, ProviderHealth> healthMap = new HashMap<>();
         for (PaymentProvider provider : providers) {
             ProviderHealth health = healthService.getProviderHealth(provider.getProviderName());
@@ -87,8 +95,8 @@ public class ProviderSelectorService {
         }
 
         // Sort by priority (lower number = higher priority), then by success rate
-        PaymentProvider selected = providers.stream()
-            .min((p1, p2) -> {
+        List<PaymentProvider> sortedProviders = providers.stream()
+            .sorted((p1, p2) -> {
                 ProviderHealth h1 = healthMap.get(p1.getProviderName());
                 ProviderHealth h2 = healthMap.get(p2.getProviderName());
 
@@ -107,9 +115,10 @@ public class ProviderSelectorService {
 
                 return Double.compare(p2Rate, p1Rate);
             })
-            .orElse(providers.get(0));
+            .toList();
 
-        log.info("Selected provider: {}", selected.getProviderName());
-        return selected;
+        log.info("Eligible providers in priority order: {}",
+            sortedProviders.stream().map(PaymentProvider::getProviderName).toList());
+        return sortedProviders;
     }
 }

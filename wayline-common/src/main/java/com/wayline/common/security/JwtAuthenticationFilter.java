@@ -18,8 +18,8 @@ import java.util.List;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
 /**
- * JWT authentication filter.
- * Extracts JWT token from Authorization header and validates it.
+ * Populates the security context from a bearer token. An invalid or absent token leaves the
+ * context empty and lets the authorization layer reject the request.
  */
 @Slf4j
 @RequiredArgsConstructor
@@ -49,11 +49,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 
                 SecurityContextHolder.getContext().setAuthentication(authentication);
-                
+
                 log.debug("JWT token validated for user: {}", username);
             }
-        } catch (Exception e) {
-            log.error("Cannot set user authentication in security context: {}", e.getMessage());
+        } catch (RuntimeException e) {
+            // Clear rather than leave a half-built context behind before the chain continues.
+            SecurityContextHolder.clearContext();
+            log.warn("Rejecting JWT for {}: {}", request.getRequestURI(), e.getMessage());
         }
 
         filterChain.doFilter(request, response);

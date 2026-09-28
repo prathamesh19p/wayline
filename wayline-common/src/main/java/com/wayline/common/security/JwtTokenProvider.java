@@ -1,95 +1,84 @@
 package com.wayline.common.security;
 
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Date;
 
 /**
- * JWT token provider for authentication.
+ * Issues and validates the HS256 bearer tokens used for API authentication.
  */
 @Component
 @Slf4j
-@RequiredArgsConstructor
 public class JwtTokenProvider {
 
-    @Value("${spring.security.jwt.secret}")
-    private String jwtSecret;
+    private static final int MIN_SECRET_LENGTH = 32;
+    private static final String ROLE_CLAIM = "role";
 
-    @Value("${spring.security.jwt.expiration}")
-    private Long jwtExpirationMs;
+    private final SecretKey signingKey;
+    private final Duration tokenLifetime;
 
-    /**
-     * Generate JWT token for user.
-     */
-    public String generateToken(String username) {
-        return generateToken(username, "MERCHANT");
+    public JwtTokenProvider(
+        @Value("${wayline.security.jwt.secret}") String secret,
+        @Value("${wayline.security.jwt.expiration}") Duration tokenLifetime
+    ) {
+        if (secret == null || secret.strip().length() < MIN_SECRET_LENGTH) {
+            throw new IllegalStateException(
+                "wayline.security.jwt.secret must be at least " + MIN_SECRET_LENGTH
+                    + " characters. Set the JWT_SECRET environment variable.");
+        }
+        this.signingKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        this.tokenLifetime = tokenLifetime;
     }
 
     public String generateToken(String username, String role) {
+        Instant now = Instant.now();
         return Jwts.builder()
-            .setSubject(username)
-            .claim("role", role)
-            .setIssuedAt(new Date())
-            .setExpiration(new Date(System.currentTimeMillis() + jwtExpirationMs))
-            .signWith(getSigningKey(), SignatureAlgorithm.HS512)
+            .subject(username)
+            .claim(ROLE_CLAIM, role)
+            .issuedAt(Date.from(now))
+            .expiration(Date.from(now.plus(tokenLifetime)))
+            .signWith(signingKey)
             .compact();
     }
 
-    /**
-     * Get username from JWT token.
-     */
+    public long getTokenLifetimeSeconds() {
+        return tokenLifetime.toSeconds();
+    }
+
     public String getUsernameFromToken(String token) {
-        return getClaims(token).getSubject();
+        return parseClaims(token).getSubject();
     }
 
     public String getRoleFromToken(String token) {
-        return getClaims(token).get("role", String.class);
+        return parseClaims(token).get(ROLE_CLAIM, String.class);
     }
 
-    /**
-     * Validate JWT token.
-     */
     public boolean validateToken(String token) {
         try {
-            getClaims(token);
+            parseClaims(token);
             return true;
-        } catch (Exception e) {
-            log.error("Invalid JWT token: {}", e.getMessage());
+        } catch (JwtException | IllegalArgumentException exception) {
+            // Expired or forged tokens are ordinary traffic, not an application error.
+            log.debug("Rejected JWT: {}", exception.getMessage());
             return false;
         }
     }
 
-    /**
-     * Get claims from JWT token.
-     */
-    private Claims getClaims(String token) {
+    private Claims parseClaims(String token) {
         return Jwts.parser()
-            .verifyWith(getSigningKey())
+            .verifyWith(signingKey)
             .build()
             .parseSignedClaims(token)
             .getPayload();
-    }
-
-    /**
-     * Get signing key from secret.
-     */
-    private SecretKey getSigningKey() {
-        try {
-            byte[] keyBytes = MessageDigest.getInstance("SHA-512")
-                .digest(jwtSecret.getBytes(StandardCharsets.UTF_8));
-            return Keys.hmacShaKeyFor(keyBytes);
-        } catch (Exception exception) {
-            throw new IllegalStateException("Unable to create JWT signing key", exception);
-        }
     }
 }

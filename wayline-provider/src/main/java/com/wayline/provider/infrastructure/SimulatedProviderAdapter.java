@@ -65,11 +65,6 @@ public class SimulatedProviderAdapter implements PaymentProvider {
     }
 
     @Override
-    public boolean verifyWebhookSignature(String payload, String signature) {
-        return signature != null && !signature.isBlank();
-    }
-
-    @Override
     public boolean isHealthy() {
         return true;
     }

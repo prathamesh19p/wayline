@@ -42,6 +42,13 @@ public class ProviderAAdapter implements PaymentProvider {
             String providerPaymentId = "PROV_A_" + UUID.randomUUID().toString().substring(0, 12);
 
             // Simulate occasional failures
+            if (request.getAmount() % 10 == 7) {
+                throw new ProviderException(
+                    "Provider A unavailable before accepting the payment",
+                    PROVIDER_NAME,
+                    "UNAVAILABLE_BEFORE_SUBMIT"
+                );
+            }
             if (request.getAmount() % 1000000 == 0) {
                 log.warn("Simulating provider failure for amount: {}", request.getAmount());
                 throw new ProviderException(
@@ -92,14 +99,8 @@ public class ProviderAAdapter implements PaymentProvider {
     }
 
     @Override
-    public boolean verifyWebhookSignature(String payload, String signature) {
-        // Simplified signature verification
-        return signature != null && !signature.isBlank();
-    }
-
-    @Override
     public boolean isHealthy() {
-        // In real implementation, would check provider health
+        // Simulator: the routing layer derives real health from observed call outcomes.
         return true;
     }
 }

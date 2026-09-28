@@ -2,10 +2,12 @@ package com.wayline.app.config;
 
 import com.wayline.common.security.JwtAuthenticationFilter;
 import com.wayline.common.security.JwtTokenProvider;
+import com.wayline.app.security.ApiRateLimitFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -13,9 +15,11 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.Customizer;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -36,13 +40,19 @@ public class SecurityConfiguration {
     @Value("${wayline.security.allowed-origin:http://localhost:3000}")
     private String allowedOrigin;
 
+    @Value("${wayline.security.rate-limit.api-per-minute:120}")
+    private int apiRequestsPerMinute;
+
+    @Value("${wayline.security.rate-limit.login-per-minute:10}")
+    private int loginRequestsPerMinute;
+
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, StringRedisTemplate redisTemplate) throws Exception {
         http
             .csrf(AbstractHttpConfigurer::disable)
             .cors(Customizer.withDefaults())
@@ -52,17 +62,22 @@ public class SecurityConfiguration {
                 .httpStrictTransportSecurity(hsts -> hsts
                     .includeSubDomains(true)
                     .maxAgeInSeconds(31536000)))
+            .exceptionHandling(exceptionHandling -> exceptionHandling
+                .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(authorize -> authorize
                 // Public endpoints
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/login").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/v1/auth/refresh").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/webhook/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/webhooks/**").permitAll()
                 .requestMatchers("/actuator/health").permitAll()
                 .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                 // Payment endpoints - MERCHANT role
                 .requestMatchers(HttpMethod.POST, "/api/v1/payments").hasRole("MERCHANT")
+                .requestMatchers(HttpMethod.POST, "/api/v1/payments/*/refunds").hasRole("MERCHANT")
                 .requestMatchers(HttpMethod.GET, "/api/v1/payments/**").hasRole("MERCHANT")
+                .requestMatchers(HttpMethod.GET, "/api/v1/ledger/me/**").hasRole("MERCHANT")
                 // Settlement endpoints - OPERATIONS role
                 .requestMatchers(HttpMethod.POST, "/api/v1/settlements/**").hasRole("OPERATIONS")
                 .requestMatchers(HttpMethod.GET, "/api/v1/settlements/**").hasRole("OPERATIONS")
@@ -77,7 +92,10 @@ public class SecurityConfiguration {
                 .anyRequest().authenticated()
             )
             .addFilterBefore(new JwtAuthenticationFilter(jwtTokenProvider), 
-                UsernamePasswordAuthenticationFilter.class);
+                UsernamePasswordAuthenticationFilter.class)
+            .addFilterAfter(new ApiRateLimitFilter(
+                redisTemplate, apiRequestsPerMinute, loginRequestsPerMinute
+            ), JwtAuthenticationFilter.class);
 
         return http.build();
     }

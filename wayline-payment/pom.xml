@@ -19,17 +19,20 @@
         <dependency>
             <groupId>com.wayline</groupId>
             <artifactId>wayline-provider</artifactId>
-            <version>1.0.0-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>com.wayline</groupId>
             <artifactId>wayline-routing</artifactId>
-            <version>1.0.0-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>com.wayline</groupId>
             <artifactId>wayline-common</artifactId>
-            <version>1.0.0-SNAPSHOT</version>
+        </dependency>
+        <!-- Payments post their financial effect to the ledger inside the same transaction as the
+             state change, so the two can never disagree. -->
+        <dependency>
+            <groupId>com.wayline</groupId>
+            <artifactId>wayline-ledger</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -42,7 +45,6 @@
         <dependency>
             <groupId>org.springframework.kafka</groupId>
             <artifactId>spring-kafka</artifactId>
-            <version>3.2.0</version>
         </dependency>
         <dependency>
             <groupId>org.postgresql</groupId>
@@ -50,17 +52,7 @@
         </dependency>
         <dependency>
             <groupId>io.github.resilience4j</groupId>
-            <artifactId>resilience4j-spring-boot3</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok</artifactId>
-            <optional>true</optional>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
+            <artifactId>resilience4j-spring-boot4</artifactId>
         </dependency>
     </dependencies>
 </project>

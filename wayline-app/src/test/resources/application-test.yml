@@ -1,0 +1,30 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  kafka:
+    consumer:
+      auto-offset-reset: earliest
+
+wayline:
+  auth:
+    username: test-merchant
+    password: test-password
+    role: MERCHANT
+  security:
+    rate-limit:
+      api-per-minute: 10000
+      login-per-minute: 10000
+    jwt:
+      # Test-only key. Production requires JWT_SECRET to be supplied explicitly.
+      secret: test-secret-key-that-is-long-enough-for-hmac-sha256-signing
+  webhooks:
+    secret: test-webhook-secret
+  provider:
+    timeout-seconds: 5
+
+logging:
+  level:
+    com.wayline: INFO
+    org.springframework.security: WARN
+    org.hibernate.SQL: WARN

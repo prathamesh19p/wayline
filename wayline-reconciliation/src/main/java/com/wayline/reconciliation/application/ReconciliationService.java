@@ -88,10 +88,10 @@ public class ReconciliationService {
     }
 
     /**
-     * Match single settlement record to internal payment.
+     * Matches on provider-supplied payment id only. A production matcher would fall back to
+     * (merchant, amount, date) fuzzy matching when the provider omits the reference.
      */
     private ReconciliationRecord matchSettlementRecord(Long settlementId, SettlementRecordData record) {
-        // Try to find payment by amount (simplified - in production would use date, merchant, etc)
         if (record.paymentId == null || record.amount == null || record.amount < 0) {
             throw new IllegalArgumentException("Settlement paymentId and non-negative amount are required");
         }

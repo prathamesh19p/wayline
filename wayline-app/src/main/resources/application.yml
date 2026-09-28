@@ -11,16 +11,16 @@ spring:
     show-sql: false
     open-in-view: false
   datasource:
-    url: jdbc:postgresql://localhost:5432/wayline
-    username: wayline
-    password: wayline_password
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:wayline}
+    username: ${DB_USERNAME:wayline}
+    password: ${DB_PASSWORD:wayline_password}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 20
       minimum-idle: 5
       connection-timeout: 30000
   kafka:
-    bootstrap-servers: localhost:9092
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     producer:
       acks: all
       retries: 3
@@ -29,19 +29,20 @@ spring:
       group-id: wayline-consumers
       auto-offset-reset: earliest
       max-poll-records: 500
-  redis:
-    host: localhost
-    port: 6379
-    timeout: 2000ms
-    jedis:
-      pool:
-        max-active: 20
-        max-idle: 10
-        min-idle: 5
-  security:
-    jwt:
-      secret: ${JWT_SECRET:your-super-secret-jwt-key-change-in-production}
-      expiration: 3600000
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 2000ms
+      # Every repository here is JPA-backed; without this Spring Data inspects all 13 of them as
+      # Redis candidates and logs a warning for each at startup.
+      repositories:
+        enabled: false
+      lettuce:
+        pool:
+          max-active: 20
+          max-idle: 10
+          min-idle: 5
 
 logging:
   level:
@@ -59,14 +60,25 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,metrics,prometheus
+        include: health,info,metrics,prometheus
   endpoint:
     health:
       show-details: when-authorized
-  metrics:
-    export:
-      prometheus:
+  prometheus:
+    metrics:
+      export:
         enabled: true
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
 
 wayline:
   auth:
@@ -75,8 +87,18 @@ wayline:
     role: ${WAYLINE_AUTH_ROLE:MERCHANT}
   security:
     allowed-origin: ${WAYLINE_ALLOWED_ORIGIN:http://localhost:3000}
+    rate-limit:
+      api-per-minute: ${WAYLINE_API_RATE_LIMIT_PER_MINUTE:120}
+      login-per-minute: ${WAYLINE_LOGIN_RATE_LIMIT_PER_MINUTE:10}
+    jwt:
+      # No default: the application must not start with a guessable signing key.
+      secret: ${JWT_SECRET}
+      expiration: ${JWT_EXPIRATION:1h}
+      refresh-expiration: ${JWT_REFRESH_EXPIRATION:30d}
   notification:
     webhook-url: ${WAYLINE_NOTIFICATION_WEBHOOK_URL:}
+  tracing:
+    endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
   webhooks:
     secret: ${WAYLINE_WEBHOOK_SECRET:}
   payment:
